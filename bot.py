@@ -185,7 +185,7 @@ def ask_gigachat(message_text: str, user_id: int) -> str:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "👋 Привет! Я семейный AI помощник на GigaChat.
+        "👋 Привет! Я семейный AI помощник на GigaChat."
 
 "
         "🤖 Я помогу с:
