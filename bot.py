@@ -113,7 +113,7 @@ def get_gigachat_token() -> Optional[str]:
             headers=headers,
             data={'scope': 'GIGACHAT_API_PERS'},
             timeout=TOKEN_TIMEOUT,
-            verify=False
+            verify=True
         )
         
         if response.status_code == 200:
