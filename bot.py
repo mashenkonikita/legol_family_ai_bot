@@ -39,7 +39,7 @@ def get_gigachat_token():
         data = {'scope': 'GIGACHAT_API_PERS'}
         
         response = requests.post(
-            'https://auth.api.sbercloud.ru/oauth',
+            'https://ngw.devices.sberbank.ru:9443/api/v2/oauth',
             headers=headers,
             data=data,
             timeout=10
