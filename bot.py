@@ -87,6 +87,8 @@ class DialogMemory:
 
 memory = DialogMemory()
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ================================
 # API GIGACHAT
 # ================================
@@ -113,7 +115,7 @@ def get_gigachat_token() -> Optional[str]:
             headers=headers,
             data={'scope': 'GIGACHAT_API_PERS'},
             timeout=TOKEN_TIMEOUT,
-            verify=True
+            verify=False
         )
         
         if response.status_code == 200:
