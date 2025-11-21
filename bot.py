@@ -215,12 +215,8 @@ def main():
     # Railway автоматически устанавливает переменную PORT
     logger.info(f"⚙️ Запуск на порту {PORT}...")
     
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TELEGRAM_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
-    )
+    application.run_polling()
+
 
 if __name__ == '__main__':
     try:
