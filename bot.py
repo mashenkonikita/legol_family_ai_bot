@@ -28,15 +28,13 @@ TOP_P = 0.1
 REQUEST_TIMEOUT = 30
 TOKEN_TIMEOUT = 10
 
-# === Теперь список триггеров для обращения к боту ===
 TRIGGERS = [
-    "бот,",
-    "@legol_family_bot_ai",
-    "гига,",
-    "вася,",
-    "ai,",
-    # Добавь свои обращения при необходимости:
-    # "family,", "нейросеть,", "умник,"
+    "бот,",          # обращение "бот,"
+    "@legol_family_bot_ai",  # username (замени на актуальный)
+    "гига,",         # обращение "Гига,"
+    "вася,",         # обращение "Вася,"
+    "ai,",           # обращение "AI,"
+    # добавь свои варианты при необходимости
 ]
 
 logging.basicConfig(
@@ -45,6 +43,13 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
+
+# ============= ФУНКЦИЯ ОТПРАВКИ ДЛИННЫХ СООБЩЕНИЙ =============
+async def send_long_message(update, text: str):
+    max_length = 4096
+    parts = [text[i:i+max_length] for i in range(0, len(text), max_length)]
+    for part in parts:
+        await update.message.reply_text(part)
 
 # ============= КЛАСС ДЛЯ ХРАНЕНИЯ ДИАЛОГОВ =============
 class DialogMemory:
@@ -183,7 +188,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Показать это сообщение\n"
         "/clear - Очистить историю диалога\n"
         "/about - Информация о боте\n\n"
-        "💬 Просто напиши мне сообщение - я отвечу на выделенные команды-триггеры!"
+        "💬 Просто напиши мне сообщение — бот ответит на выделенное обращение по триггерам!"
     )
     await update.message.reply_text(help_text)
 
@@ -201,10 +206,9 @@ async def clear_dialog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     memory.clear_dialog(user_id)
     await update.message.reply_text("✨ История диалога очищена!")
 
-# ============= ОБРАБОТКА СООБЩЕНИЙ С ТРИГГЕРАМИ =============
+# ============= ОБРАБОТКА СООБЩЕНИЙ С ТРИГГЕРАМИ И ОТПРАВКОЙ ДЛИННЫХ ОТВЕТОВ =============
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text.strip().lower()
-    # Реагировать только если есть триггер или сообщение начинается с /
     is_triggered = any(message_text.startswith(trigger) for trigger in TRIGGERS)
     if not (is_triggered or message_text.startswith("/")):
         return
@@ -243,9 +247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         response = ask_gigachat(message_text, user_id)
         if len(response) > 4096:
-            parts = [response[i:i+4096] for i in range(0, len(response), 4096)]
-            for part in parts:
-                await update.message.reply_text(part)
+            await send_long_message(update, response)
         else:
             await update.message.reply_text(response)
     except Exception as e:
