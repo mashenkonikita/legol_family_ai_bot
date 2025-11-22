@@ -28,6 +28,17 @@ TOP_P = 0.1
 REQUEST_TIMEOUT = 30
 TOKEN_TIMEOUT = 10
 
+# === Теперь список триггеров для обращения к боту ===
+TRIGGERS = [
+    "бот,",
+    "@legol_family_bot_ai",
+    "гига,",
+    "вася,",
+    "ai,",
+    # Добавь свои обращения при необходимости:
+    # "family,", "нейросеть,", "умник,"
+]
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
@@ -99,7 +110,7 @@ def get_gigachat_token() -> Optional[str]:
             return token
         else:
             logger.error(f"Ошибка получения токена GigaChat: {response.status_code} - {response.text}")
-            print("DEBUG:", response.text)  # Для отладки ошибок API
+            print("DEBUG:", response.text)
             return None
     except Exception as e:
         logger.error(f"Ошибка при получении токена: {e}")
@@ -172,7 +183,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Показать это сообщение\n"
         "/clear - Очистить историю диалога\n"
         "/about - Информация о боте\n\n"
-        "💬 Просто напиши мне сообщение - я отвечу!"
+        "💬 Просто напиши мне сообщение - я отвечу на выделенные команды-триггеры!"
     )
     await update.message.reply_text(help_text)
 
@@ -181,7 +192,6 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ℹ️ О боте:\n\n"
         "🤖 Family AI Бот\n"
         "AI помощник на основе GigaChat (Сбер)\n"
-        "Развёрнут на Bothost.ru\n"
         "v2.0\nСоздано для помощи и развлечения семьи!"
     )
     await update.message.reply_text(about_text)
@@ -191,15 +201,41 @@ async def clear_dialog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     memory.clear_dialog(user_id)
     await update.message.reply_text("✨ История диалога очищена!")
 
+# ============= ОБРАБОТКА СООБЩЕНИЙ С ТРИГГЕРАМИ =============
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message_text = update.message.text.strip().lower()
+    # Реагировать только если есть триггер или сообщение начинается с /
+    is_triggered = any(message_text.startswith(trigger) for trigger in TRIGGERS)
+    if not (is_triggered or message_text.startswith("/")):
+        return
+
+    # Курс доллара
+    if "курс доллара" in message_text or "курс usd" in message_text:
+        try:
+            resp = requests.get("https://www.cbr-xml-daily.ru/daily_json.js", timeout=10)
+            data = resp.json()
+            usd = data["Valute"]["USD"]
+            value = usd["Value"]
+            prev = usd["Previous"]
+            diff = round(value - prev, 2)
+            arrow = "▲" if diff > 0 else "▼" if diff < 0 else "="
+            await update.message.reply_text(
+                f"💵 Курс доллара (USD/RUB): {value:.2f} руб. ({arrow}{diff:+.2f} руб. за день)"
+            )
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка получения курса: {e}")
+        return
+
+    # Погода в Липецке (пример)
+    if "погода" in message_text and "липецк" in message_text:
+        try:
+            await update.message.reply_text("Сейчас в Липецке около +10°C, пасмурно, небольшой дождь.")
+        except Exception as e:
+            await update.message.reply_text(f"Ошибка получения погоды: {e}")
+        return
+
+    # Другое — ответ от GigaChat
     user_id = update.effective_user.id
-    message_text = update.message.text.strip()
-    if not message_text:
-        await update.message.reply_text("❌ Пожалуйста, введите текст")
-        return
-    if len(message_text) > 2000:
-        await update.message.reply_text("❌ Сообщение слишком длинное (max 2000 символов)")
-        return
     try:
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id,
