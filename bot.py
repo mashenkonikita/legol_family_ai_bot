@@ -1,8 +1,3 @@
-# ================================
-# 🤖 СЕМЕЙНЫЙ AI АГЕНТ (GIGACHAT)
-# ПОЛНЫЙ КОД - ВЕРСИЯ 2.0
-# ================================
-
 import os
 import logging
 import requests
@@ -13,21 +8,20 @@ from typing import Optional, Dict, List
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ChatAction
+import urllib3
 
-# ================================
-# КОНФИГУРАЦИЯ
-# ================================
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# ============= КОНФИГУРАЦИЯ =============
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 GIGACHAT_CLIENT_ID = os.getenv('GIGACHAT_CLIENT_ID')
 GIGACHAT_CLIENT_SECRET = os.getenv('GIGACHAT_CLIENT_SECRET')
-PORT = int(os.getenv('PORT', 8443))
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://your-railway-app.up.railway.app')
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.getenv("PORT", 8443))
 
-GIGACHAT_AUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth'
-GIGACHAT_API_URL = 'https://gigachat-api.neb.neb.neb.ru/api/v1/chat/completions'
-GIGACHAT_MODEL = 'GigaChat'
-
+GIGACHAT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+GIGACHAT_API_URL = "https://gigachat-api.neb.neb.neb.ru/api/v1/chat/completions"
+GIGACHAT_MODEL = "GigaChat"
 MAX_DIALOG_HISTORY = 15
 MAX_TOKENS = 512
 TEMPERATURE = 0.7
@@ -35,99 +29,81 @@ TOP_P = 0.1
 REQUEST_TIMEOUT = 30
 TOKEN_TIMEOUT = 10
 
-# ================================
-# ЛОГИРОВАНИЕ
-# ================================
-
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
     handlers=[
-        logging.FileHandler('bot.log'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# ================================
-# МЕНЕДЖЕР ПАМЯТИ ДИАЛОГОВ
-# ================================
-
+# ============= КЛАСС ДЛЯ ХРАНЕНИЯ ДИАЛОГОВ =============
 class DialogMemory:
     def __init__(self):
         self.dialogs: Dict[int, List[Dict]] = {}
         self.token_cache: Dict[str, tuple] = {}
-    
+
     def add_message(self, user_id: int, role: str, content: str):
         if user_id not in self.dialogs:
             self.dialogs[user_id] = []
-        
         self.dialogs[user_id].append({"role": role, "content": content})
-        
         if len(self.dialogs[user_id]) > MAX_DIALOG_HISTORY:
             self.dialogs[user_id] = self.dialogs[user_id][-MAX_DIALOG_HISTORY:]
-    
+
     def get_history(self, user_id: int) -> List[Dict]:
         return self.dialogs.get(user_id, [])
-    
+
     def clear_dialog(self, user_id: int):
         if user_id in self.dialogs:
             del self.dialogs[user_id]
-            logger.info(f"🗑️ История диалога очищена для {user_id}")
-    
+            logger.info(f"Диалог пользователя {user_id} очищен")
+
     def cache_token(self, token: str):
-        self.token_cache['gigachat'] = (token, datetime.now())
-    
+        self.token_cache["gigachat"] = (token, datetime.now())
+
     def get_cached_token(self) -> Optional[str]:
-        if 'gigachat' in self.token_cache:
-            token, timestamp = self.token_cache['gigachat']
+        if "gigachat" in self.token_cache:
+            token, timestamp = self.token_cache["gigachat"]
             if (datetime.now() - timestamp).seconds < 1800:
                 return token
         return None
 
 memory = DialogMemory()
 
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-# ================================
-# API GIGACHAT
-# ================================
-
+# ============= ФУНКЦИИ ДЛЯ GIGACHAT =============
 def get_gigachat_token() -> Optional[str]:
     try:
         cached_token = memory.get_cached_token()
         if cached_token:
-            logger.debug("✅ Токен из кэша")
+            logger.debug("Используется кэшированный токен GigaChat")
             return cached_token
-        
+
         auth_string = f"{GIGACHAT_CLIENT_ID}:{GIGACHAT_CLIENT_SECRET}"
         auth_bytes = auth_string.encode('utf-8')
         auth_b64 = base64.b64encode(auth_bytes).decode('utf-8')
-        
         headers = {
-            'Authorization': f'Basic {auth_b64}',
-            'RqUID': str(uuid.uuid4()),
-            'Content-Type': 'application/x-www-form-urlencoded'
+            "Authorization": f"Basic {auth_b64}",
+            "RqUID": str(uuid.uuid4()),
+            "Content-Type": "application/x-www-form-urlencoded"
         }
-        
         response = requests.post(
             GIGACHAT_AUTH_URL,
             headers=headers,
-            data={'scope': 'GIGACHAT_API_PERS'},
+            data="scope=GIGACHAT_API_PERS",
             timeout=TOKEN_TIMEOUT,
             verify=False
         )
-        
         if response.status_code == 200:
-            token = response.json().get('access_token')
+            token = response.json().get("access_token")
             memory.cache_token(token)
-            logger.info("✅ Новый токен получен")
+            logger.info("Токен GigaChat получен успешно")
             return token
         else:
-            logger.error(f"❌ Ошибка токена: {response.status_code}")
+            logger.error(f"Ошибка получения токена GigaChat: {response.status_code}")
             return None
     except Exception as e:
-        logger.error(f"❌ Ошибка при получении токена: {e}")
+        logger.error(f"Ошибка при получении токена: {e}")
         return None
 
 def ask_gigachat(message_text: str, user_id: int) -> str:
@@ -135,24 +111,19 @@ def ask_gigachat(message_text: str, user_id: int) -> str:
         token = get_gigachat_token()
         if not token:
             return "❌ Ошибка подключения к GigaChat"
-        
         memory.add_message(user_id, "user", message_text)
         history = memory.get_history(user_id)
-        
         headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
         }
-        
         payload = {
             "model": GIGACHAT_MODEL,
             "messages": history,
             "temperature": TEMPERATURE,
             "top_p": TOP_P,
-            "max_tokens": MAX_TOKENS,
-            "system_prompt": "Ты полезный семейный AI помощник. Отвечай дружелюбно и конструктивно."
+            "max_tokens": MAX_TOKENS
         }
-        
         response = requests.post(
             GIGACHAT_API_URL,
             headers=headers,
@@ -160,162 +131,144 @@ def ask_gigachat(message_text: str, user_id: int) -> str:
             timeout=REQUEST_TIMEOUT,
             verify=False
         )
-        
         if response.status_code == 200:
             result = response.json()
-            assistant_message = result['choices']['message']['content']
+            assistant_message = result["choices"][0]["message"]["content"]
             memory.add_message(user_id, "assistant", assistant_message)
-            logger.info(f"✅ Ответ получен для {user_id}")
+            logger.info(f"Ответ отправлен пользователю {user_id}")
             return assistant_message
         else:
-            logger.error(f"❌ Ошибка API: {response.status_code}")
-            return f"⚠️ Ошибка сервиса ({response.status_code})"
-    
+            logger.error(f"Ошибка API GigaChat: {response.status_code}")
+            return f"❌ Ошибка API ({response.status_code})"
     except requests.exceptions.Timeout:
-        logger.error("❌ Таймаут")
-        return "⏱️ Истёк таймаут. Попробуйте позже."
+        logger.error("Таймаут при обращении к GigaChat")
+        return "⏱️ Таймаут ответа от AI"
     except requests.exceptions.ConnectionError:
-        logger.error("❌ Ошибка подключения")
-        return "🌐 Ошибка подключения"
+        logger.error("Ошибка подключения к GigaChat")
+        return "🔴 Ошибка подключения к AI"
     except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
+        logger.error(f"Неожиданная ошибка: {e}")
         return f"❌ Ошибка: {str(e)}"
 
-# ================================
-# ОБРАБОТЧИКИ КОМАНД
-# ================================
-
+# ============= ОБРАБОТЧИКИ КОМАНД =============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "👋 Привет! Я семейный AI помощник на GigaChat."
-
-        "🤖 Я помогу с:"
-        "• Советами и рекомендациями"
-        "• Планированием"
-        "• Ответами на вопросы"
-        "• Генерацией идей"
-        "📝 Просто напишите сообщение!"
-        "/help - справка"
-        "/clear - новый диалог"
-        "/about - о боте"
+        "👋 Привет! Я AI помощник на основе GigaChat.\n\n"
+        "🤖 Я могу помочь тебе с:\n"
+        "- Ответами на вопросы\n"
+        "- Написанием текстов\n"
+        "- Объяснением сложных тем\n"
+        "- И многим другим!\n"
+        "Используй /help для списка команд"
     )
     await update.message.reply_text(welcome_text)
-    logger.info(f"👤 Новый пользователь: {update.effective_user.id}")
+    logger.info(f"Пользователь {update.effective_user.id} запустил бота")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "📋 СПРАВКА"
-        "/start - начало"
-        "/help - справка"
-        "/clear - очистить историю"
-        "/about - о боте"
-        "💡 Просто пишите сообщения!"
+        "📖 Доступные команды:\n\n"
+        "/start - Начать работу с ботом\n"
+        "/help - Показать это сообщение\n"
+        "/clear - Очистить историю диалога\n"
+        "/about - Информация о боте\n\n"
+        "💬 Просто напиши мне сообщение - я отвечу!"
     )
     await update.message.reply_text(help_text)
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     about_text = (
-        "ℹ️ О БОТЕ"
-        "🤖 Семейный AI помощник"
-        "⚙️ GigaChat (Сбербанк)"
-        "☁️ Railway.app"
-        "💾 Память: 15 сообщений"
-        "🇷🇺 Русский язык"
-        "✨ v2.0"
+        "ℹ️ О боте:\n\n"
+        "🤖 Family AI Бот\n"
+        "AI помощник на основе GigaChat (Сбер)\n"
+        "Развёрнут на Bothost.ru\n"
+        "v2.0\nСоздано для помощи и развлечения семьи!"
     )
     await update.message.reply_text(about_text)
 
 async def clear_dialog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     memory.clear_dialog(user_id)
-    await update.message.reply_text("✅ История очищена! 🚀")
+    await update.message.reply_text("✨ История диалога очищена!")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     message_text = update.message.text.strip()
-    
     if not message_text:
-        await update.message.reply_text("⚠️ Напишите сообщение")
+        await update.message.reply_text("❌ Пожалуйста, введите текст")
         return
-    
     if len(message_text) > 2000:
-        await update.message.reply_text("⚠️ Сообщение слишком длинное")
+        await update.message.reply_text("❌ Сообщение слишком длинное (max 2000 символов)")
         return
-    
-    logger.info(f"💬 От @{update.effective_user.username}: {message_text[:50]}")
-    
+    logger.info(f"Сообщение от {update.effective_user.username}: {message_text[:50]}")
     try:
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id,
             action=ChatAction.TYPING
         )
-        
         response = ask_gigachat(message_text, user_id)
-        
+        # Разбиваем длинный ответ на части
         if len(response) > 4096:
             parts = [response[i:i+4096] for i in range(0, len(response), 4096)]
             for part in parts:
                 await update.message.reply_text(part)
         else:
             await update.message.reply_text(response)
-        
-        logger.info(f"✅ Ответ отправлен {user_id}")
-    
+        logger.info(f"Ответ успешно отправлен пользователю {user_id}")
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки: {e}")
-        await update.message.reply_text("❌ Ошибка. Попробуйте позже.")
+        logger.error(f"Ошибка при обработке сообщения: {e}")
+        await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"❌ Ошибка: {context.error}", exc_info=context.error)
+    logger.error(f"Ошибка: {context.error}", exc_info=context.error)
 
-# ================================
-# ИНИЦИАЛИЗАЦИЯ
-# ================================
-
+# ============= ПРЕДУСТАНОВКА КОМАНД И WEBHOOK =============
 async def post_init(application: Application):
     try:
         commands = [
-            BotCommand("start", "Начало работы"),
-            BotCommand("help", "Справка"),
-            BotCommand("clear", "Новый диалог"),
-            BotCommand("about", "О боте"),
+            BotCommand("start", "🚀 Начать"),
+            BotCommand("help", "📖 Помощь"),
+            BotCommand("clear", "✨ Очистить диалог"),
+            BotCommand("about", "ℹ️ О боте"),
         ]
         await application.bot.set_my_commands(commands)
-        logger.info("✅ Команды установлены")
+        logger.info("Команды бота установлены")
+        if WEBHOOK_URL:
+            await application.bot.set_webhook(WEBHOOK_URL)
+            logger.info(f"Webhook установлен: {WEBHOOK_URL}")
     except Exception as e:
-        logger.error(f"❌ Ошибка инициализации: {e}")
+        logger.error(f"Ошибка при установке команд или вебхука: {e}")
 
+# ============= ОСНОВНОЙ ЗАПУСК =============
 def main():
-    logger.info("=" * 60)
-    logger.info("🚀 ЗАПУСК СЕМЕЙНОГО AI АГЕНТА")
-    logger.info("=" * 60)
-    
-    if not all([TELEGRAM_TOKEN, GIGACHAT_CLIENT_ID, GIGACHAT_CLIENT_SECRET]):
-        logger.error("❌ Не заданы переменные окружения!")
+    logger.info("-" * 60)
+    logger.info("Запуск Family AI Bot на webhook")
+    logger.info("-" * 60)
+
+    if not all([TELEGRAM_TOKEN, GIGACHAT_CLIENT_ID, GIGACHAT_CLIENT_SECRET, WEBHOOK_URL]):
+        logger.error("❌ Не установлены необходимые переменные окружения!")
         return
-    
+
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("about", about_command))
     application.add_handler(CommandHandler("clear", clear_dialog))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
     application.add_error_handler(error_handler)
-    
     application.post_init = post_init
-    
-    logger.info(f"⚙️ Запуск на порту {PORT}...")
-    logger.info(f"📍 Webhook: {WEBHOOK_URL}")
-    
-    application.run_polling()
+
+    logger.info(f"✅ Бот запущен в режиме webhook")
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=WEBHOOK_URL
+    )
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("⏹️ Бот остановлен пользователем")
+        logger.info("Бот остановлен")
     except Exception as e:
-        logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
+        logger.error(f"Критическая ошибка: {e}", exc_info=True)
         raise
