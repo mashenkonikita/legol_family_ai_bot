@@ -9,16 +9,12 @@ from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ChatAction
 import urllib3
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ============= КОНФИГУРАЦИЯ =============
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 GIGACHAT_CLIENT_ID = os.getenv('GIGACHAT_CLIENT_ID')
 GIGACHAT_CLIENT_SECRET = os.getenv('GIGACHAT_CLIENT_SECRET')
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 8443))
-
 GIGACHAT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 GIGACHAT_API_URL = "https://gigachat-api.neb.neb.neb.ru/api/v1/chat/completions"
 GIGACHAT_MODEL = "GigaChat"
@@ -32,9 +28,7 @@ TOKEN_TIMEOUT = 10
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    handlers=[
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -57,7 +51,7 @@ class DialogMemory:
     def clear_dialog(self, user_id: int):
         if user_id in self.dialogs:
             del self.dialogs[user_id]
-            logger.info(f"Диалог пользователя {user_id} очищен")
+        logger.info(f"Диалог пользователя {user_id} очищен")
 
     def cache_token(self, token: str):
         self.token_cache["gigachat"] = (token, datetime.now())
@@ -206,7 +200,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             action=ChatAction.TYPING
         )
         response = ask_gigachat(message_text, user_id)
-        # Разбиваем длинный ответ на части
         if len(response) > 4096:
             parts = [response[i:i+4096] for i in range(0, len(response), 4096)]
             for part in parts:
@@ -221,7 +214,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Ошибка: {context.error}", exc_info=context.error)
 
-# ============= ПРЕДУСТАНОВКА КОМАНД И WEBHOOK =============
+# ============= ПРЕДУСТАНОВКА КОМАНД =============
 async def post_init(application: Application):
     try:
         commands = [
@@ -232,19 +225,16 @@ async def post_init(application: Application):
         ]
         await application.bot.set_my_commands(commands)
         logger.info("Команды бота установлены")
-        if WEBHOOK_URL:
-            await application.bot.set_webhook(WEBHOOK_URL)
-            logger.info(f"Webhook установлен: {WEBHOOK_URL}")
     except Exception as e:
-        logger.error(f"Ошибка при установке команд или вебхука: {e}")
+        logger.error(f"Ошибка при установке команд: {e}")
 
 # ============= ОСНОВНОЙ ЗАПУСК =============
 def main():
     logger.info("-" * 60)
-    logger.info("Запуск Family AI Bot на webhook")
+    logger.info("Запуск Family AI Bot на long polling")
     logger.info("-" * 60)
 
-    if not all([TELEGRAM_TOKEN, GIGACHAT_CLIENT_ID, GIGACHAT_CLIENT_SECRET, WEBHOOK_URL]):
+    if not all([TELEGRAM_TOKEN, GIGACHAT_CLIENT_ID, GIGACHAT_CLIENT_SECRET]):
         logger.error("❌ Не установлены необходимые переменные окружения!")
         return
 
@@ -256,13 +246,8 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     application.post_init = post_init
-
-    logger.info(f"✅ Бот запущен в режиме webhook")
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=WEBHOOK_URL
-    )
+    logger.info(f"✅ Бот запущен в режиме polling")
+    application.run_polling()
 
 if __name__ == '__main__':
     try:
