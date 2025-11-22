@@ -73,18 +73,19 @@ def get_gigachat_token() -> Optional[str]:
             logger.debug("Используется кэшированный токен GigaChat")
             return cached_token
 
-        auth_string = f"{GIGACHAT_CLIENT_ID}:{GIGACHAT_CLIENT_SECRET}"
-        auth_bytes = auth_string.encode('utf-8')
-        auth_b64 = base64.b64encode(auth_bytes).decode('utf-8')
+        auth_str = f"{GIGACHAT_CLIENT_ID}:{GIGACHAT_CLIENT_SECRET}"
+        auth_b64 = base64.b64encode(auth_str.encode()).decode()
         headers = {
             "Authorization": f"Basic {auth_b64}",
             "RqUID": str(uuid.uuid4()),
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json"
         }
+        payload = 'scope=GIGACHAT_API_PERS'
         response = requests.post(
             GIGACHAT_AUTH_URL,
             headers=headers,
-            data="scope=GIGACHAT_API_PERS",
+            data=payload,
             timeout=TOKEN_TIMEOUT,
             verify=False
         )
@@ -94,7 +95,7 @@ def get_gigachat_token() -> Optional[str]:
             logger.info("Токен GigaChat получен успешно")
             return token
         else:
-            logger.error(f"Ошибка получения токена GigaChat: {response.status_code}")
+            logger.error(f"Ошибка получения токена GigaChat: {response.status_code} - {response.text}")
             return None
     except Exception as e:
         logger.error(f"Ошибка при получении токена: {e}")
@@ -104,7 +105,7 @@ def ask_gigachat(message_text: str, user_id: int) -> str:
     try:
         token = get_gigachat_token()
         if not token:
-            return "❌ Ошибка подключения к GigaChat"
+            return "❌ Ошибка подключения к AI (GigaChat)"
         memory.add_message(user_id, "user", message_text)
         history = memory.get_history(user_id)
         headers = {
@@ -132,7 +133,7 @@ def ask_gigachat(message_text: str, user_id: int) -> str:
             logger.info(f"Ответ отправлен пользователю {user_id}")
             return assistant_message
         else:
-            logger.error(f"Ошибка API GigaChat: {response.status_code}")
+            logger.error(f"Ошибка API GigaChat: {response.status_code} - {response.text}")
             return f"❌ Ошибка API ({response.status_code})"
     except requests.exceptions.Timeout:
         logger.error("Таймаут при обращении к GigaChat")
@@ -156,7 +157,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Используй /help для списка команд"
     )
     await update.message.reply_text(welcome_text)
-    logger.info(f"Пользователь {update.effective_user.id} запустил бота")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -193,7 +193,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(message_text) > 2000:
         await update.message.reply_text("❌ Сообщение слишком длинное (max 2000 символов)")
         return
-    logger.info(f"Сообщение от {update.effective_user.username}: {message_text[:50]}")
     try:
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id,
@@ -206,7 +205,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(part)
         else:
             await update.message.reply_text(response)
-        logger.info(f"Ответ успешно отправлен пользователю {user_id}")
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}")
         await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже")
