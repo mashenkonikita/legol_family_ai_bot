@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import logging
 import requests
@@ -16,7 +19,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 GIGACHAT_CLIENT_ID = os.getenv('GIGACHAT_CLIENT_ID')
 GIGACHAT_CLIENT_SECRET = os.getenv('GIGACHAT_CLIENT_SECRET')
 GIGACHAT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
-GIGACHAT_API_URL = "https://gigachat-api.neb.neb.neb.ru/api/v1/chat/completions"
+GIGACHAT_API_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 GIGACHAT_MODEL = "GigaChat"
 MAX_DIALOG_HISTORY = 15
 MAX_TOKENS = 512
@@ -96,9 +99,11 @@ def get_gigachat_token() -> Optional[str]:
             return token
         else:
             logger.error(f"Ошибка получения токена GigaChat: {response.status_code} - {response.text}")
+            print("DEBUG:", response.text)  # Для отладки ошибок API
             return None
     except Exception as e:
         logger.error(f"Ошибка при получении токена: {e}")
+        print("DEBUG ERROR:", e)
         return None
 
 def ask_gigachat(message_text: str, user_id: int) -> str:
@@ -134,6 +139,7 @@ def ask_gigachat(message_text: str, user_id: int) -> str:
             return assistant_message
         else:
             logger.error(f"Ошибка API GigaChat: {response.status_code} - {response.text}")
+            print("DEBUG:", response.text)
             return f"❌ Ошибка API ({response.status_code})"
     except requests.exceptions.Timeout:
         logger.error("Таймаут при обращении к GigaChat")
@@ -143,6 +149,7 @@ def ask_gigachat(message_text: str, user_id: int) -> str:
         return "🔴 Ошибка подключения к AI"
     except Exception as e:
         logger.error(f"Неожиданная ошибка: {e}")
+        print("DEBUG ERROR:", e)
         return f"❌ Ошибка: {str(e)}"
 
 # ============= ОБРАБОТЧИКИ КОМАНД =============
