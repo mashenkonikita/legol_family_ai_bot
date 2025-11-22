@@ -5,3 +5,4 @@ urllib3==2.2.3
 aiohttp==3.10.0
 certifi==2024.12.14
 python-dotenv==1.0.0
+python-telegram-bot[webhooks]==21.6
