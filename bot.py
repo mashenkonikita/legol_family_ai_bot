@@ -14,6 +14,8 @@ from telegram.constants import ChatAction
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+from weather import get_lipetsk_weather_data  # импорт из файла weather.py
+
 # ============= КОНФИГУРАЦИЯ =============
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 GIGACHAT_CLIENT_ID = os.getenv('GIGACHAT_CLIENT_ID')
@@ -29,20 +31,8 @@ REQUEST_TIMEOUT = 30
 TOKEN_TIMEOUT = 10
 
 TRIGGERS = [
-    "бот,",          # обращение "бот,"
-    "@legol_family_bot_ai",  # username (замени на актуальный)
-    "гига,",         # обращение "Гига,"
-    "вася,",         # обращение "Вася,"
-    "ai,",           # обращение "AI,"
-    # добавь свои варианты при необходимости
+    "бот,", "@legol_family_bot_ai", "гига,", "вася,", "ai,"
 ]
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
 
 # ============= ФУНКЦИЯ ОТПРАВКИ ДЛИННЫХ СООБЩЕНИЙ =============
 async def send_long_message(update, text: str):
@@ -50,6 +40,13 @@ async def send_long_message(update, text: str):
     parts = [text[i:i+max_length] for i in range(0, len(text), max_length)]
     for part in parts:
         await update.message.reply_text(part)
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 # ============= КЛАСС ДЛЯ ХРАНЕНИЯ ДИАЛОГОВ =============
 class DialogMemory:
@@ -84,7 +81,7 @@ class DialogMemory:
 
 memory = DialogMemory()
 
-# ============= ФУНКЦИИ ДЛЯ GIGACHAT =============
+# ============= ФУНКЦИИ GIGACHAT =============
 def get_gigachat_token() -> Optional[str]:
     try:
         cached_token = memory.get_cached_token()
@@ -188,7 +185,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Показать это сообщение\n"
         "/clear - Очистить историю диалога\n"
         "/about - Информация о боте\n\n"
-        "💬 Просто напиши мне сообщение — бот ответит на выделенное обращение по триггерам!"
+        "💬 В семейном чате я отвечаю только на обращения с триггером!"
     )
     await update.message.reply_text(help_text)
 
@@ -206,14 +203,14 @@ async def clear_dialog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     memory.clear_dialog(user_id)
     await update.message.reply_text("✨ История диалога очищена!")
 
-# ============= ОБРАБОТКА СООБЩЕНИЙ С ТРИГГЕРАМИ И ОТПРАВКОЙ ДЛИННЫХ ОТВЕТОВ =============
+# ============= ОБРАБОТКА СООБЩЕНИЙ С ТРИГГЕРАМИ =============
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text.strip().lower()
     is_triggered = any(message_text.startswith(trigger) for trigger in TRIGGERS)
     if not (is_triggered or message_text.startswith("/")):
         return
 
-    # Курс доллара
+    # Курс доллара — ответ как раньше
     if "курс доллара" in message_text or "курс usd" in message_text:
         try:
             resp = requests.get("https://www.cbr-xml-daily.ru/daily_json.js", timeout=10)
@@ -230,15 +227,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Ошибка получения курса: {e}")
         return
 
-    # Погода в Липецке (пример)
+    # Погода в Липецке — ответ с живой генерацией
     if "погода" in message_text and "липецк" in message_text:
-        try:
-            await update.message.reply_text("Сейчас в Липецке около +10°C, пасмурно, небольшой дождь.")
-        except Exception as e:
-            await update.message.reply_text(f"Ошибка получения погоды: {e}")
+        temp, feels_like, condition = get_lipetsk_weather_data()
+        if "Ошибка" in str(condition):
+            await update.message.reply_text(condition)
+            return
+
+        condition_human = {
+            "clear": "ясно", "partly-cloudy": "малооблачно", "cloudy": "облачно с прояснениями",
+            "overcast": "пасмурно", "drizzle": "морось", "light-rain": "небольшой дождь",
+            "rain": "дождь", "moderate-rain": "умеренный дождь", "heavy-rain": "сильный дождь",
+            "wet-snow": "дождь со снегом", "light-snow": "небольшой снег", "snow": "снег",
+            "hail": "град", "thunderstorm": "гроза", "fog": "туман"
+        }.get(condition, condition)
+
+        prompt = (
+            f"Сделай уникальный, свежий и атмосферный текст о погоде в Липецке прямо сейчас: "
+            f"температура {temp}°C, ощущается как {feels_like}°C, состояние: {condition_human}. "
+            "Добавь лёгкий юмор, семейную нотку, краткую рекомендацию (без повторов типа тапочки!), чтобы сообщение каждый раз было новым. "
+            "Формат — 1-2 абзаца, ярко, живо, не банально."
+        )
+        reply = ask_gigachat(prompt, update.effective_user.id)
+        if len(reply) > 4096:
+            await send_long_message(update, reply)
+        else:
+            await update.message.reply_text(reply)
         return
 
-    # Другое — ответ от GigaChat
+    # --- Другие вопросы —
     user_id = update.effective_user.id
     try:
         await context.bot.send_chat_action(
