@@ -228,7 +228,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Погода в Липецке — ответ с живой генерацией
-    if "погода" in message_text and "липецк" in message_text:
+    if "погода" in message_text:
         temp, feels_like, condition = get_lipetsk_weather_data()
         if "Ошибка" in str(condition):
             await update.message.reply_text(condition)
@@ -244,8 +244,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         prompt = (
             f"Сделай уникальный, свежий и атмосферный текст о погоде в Липецке прямо сейчас: "
-            f"температура {temp}°C, ощущается как {feels_like}°C, состояние: {condition_human}. "
-            "Добавь лёгкий юмор, семейную нотку, краткую рекомендацию (без повторов типа тапочки!), чтобы сообщение каждый раз было новым. "
+            f"температура {temp}°C, обязательно цифрами, ощущается как {feels_like}°C, обязательно цифрами, состояние: {condition_human}. "
+            "Добавь юмор, семейную нотку. Добавь краткую рекомендацию что надеть, тоже с юмором, чтобы сообщение каждый раз было новым. "
             "Формат — 1-2 абзаца, ярко, живо, не банально."
         )
         reply = ask_gigachat(prompt, update.effective_user.id)
